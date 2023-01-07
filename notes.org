@@ -1,0 +1,113 @@
+* Ideas
+* Notes
+** nmap 
+*** types of scans
+**** ~SYN~ scan (default scan type)
+A ~SYN~ scan will cause =nmap= to send a syn ~TCP~ message to see if a given machine will respond with ~ACK~.
+=nmap= will not send an ~ACK~ back.
+**** Version scan ~-sV~ 
+The ~-sV~ parameter will tell =nmap= to attempt to identify versions of services that are running.
+**** Detailed scan ~-sC~
+The ~-sC~ parameter tells =nmap= to gather more information during the scan.
+It will gather more information by following a script.
+There are many scripts available, but if you do not specify a scrip it will use the default.
+The default script is a little more verbose, and provides some generally useful information.
+More scripts are available at =/usr/share/nmap/scripts/=.
+Other scripts can be specified by ~-sC $scriptname~.
+**** All ports scan ~-p-~
+The ~-p-~ parameter tells nmap to scan all ports 1-65535.
+
+*** examples
+This will perform a ~SYN~ scan on =$IP=, for the top 1000 most common ports.
+#+begin_src shell :results output
+nmap 127.0.0.1
+#+end_src
+
+This example will scan for hosts running sort of ~SMB~ service.
+#+begin_src shell :results output 
+nmap -sC smb-os-discover.nse 10.10.10.0/24
+#+end_src
+
+** ssh-agent
+=ssh-agent= uses environment variables to work.
+Usually you'd have to export those variables manually.
+You can run =ssh-agent= as a wrapper around another command,
+which will set the environment variables and then spawn a sub-process with
+those variables already set.
+A useful example of this would be putting it in you x session file like below.
+
+#+begin_src conf
+
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Xmonad
+Comment=Lightweight X11 tiled window manager written in Haskell
+Exec=ssh-agent xmonad
+Icon=xmonad
+Terminal=false
+StartupNotify=false
+Categories=Application;
+
+#+end_src
+** proxmox
+*** create Windows VM with GFX card
+Here are the steps to take to creat a Windows VM on Proxmox
+with a graphics card passed through.
+
+1. Verify UEFI is setup to allow IOMMU
+2. Edit =/etc/default/grub=
+   Add ~amd_iommu~ or ~intel_iommu~ accordingly.
+    #+BEGIN_SRC sh
+      #from
+      GRUB_CMDLINE_LINUX_DEFAULT="quiet"
+      #to
+      GRUB_CMDLINE_LINUX_DEFAULT="quiet amd_iommu=on"
+    #+END_SRC
+3. Run =grub-update=
+4. Reboot and verify IOMMU is turned on successfully
+   =dmesg | grep iommu=
+5. Edit =/etc/modules=
+   To make sure we use the dummy drivers/kernel-modules add the following
+   to =/etc/modules=
+   1. ~vfio~
+   2. ~vfio_iommu_type1~
+   3. ~vfio_pci~
+   4. ~vfio_virqfd~
+6. Edit =/etc/modprobe.d/pve-blacklist.conf=
+   Add the following to =/etc/modprobe.d/pve-blacklist.conf= to stop the kernel
+   from loading actual drivers instead of dummy drivers.
+  1. ~blacklist nvidiafb~
+  2. ~blacklist nvidia~
+  3. ~blacklist nouveau~
+  4. ~blacklist radeon~
+      The ~radeon~ entry may need to be left out if you're using the iGPU
+      on an AMD processor.
+7. Create VM and install Windows
+   + use UEFI instead of BIOS
+   + use q35 machine type
+   + add at least 8GB RAM
+   + 8 CPU threads is preferable, may be able to do less
+   + using virtio disk ensures best performace from the storage device
+   + using virtio network adapter ensures best performance from the network adapter
+   + make sure to install virtio Windows drivers
+   + make sure RDP is enabled
+      + you'll be unable to use Proxmox's vnc console
+8. Edit =/etc/pve/qemu-server/$VMID.conf=
+   To hide from Windows you're running it in a VM,
+   add these flags to the ~cpu:~ line.
+   =cpu: host,hidden=1,flags=+pcid=
+9. Add GPU to VM using Proxmox GUI
+   + check all boxes
+     + All Functions
+     + ROM-BAR
+     + Primary GPU
+     + PCI-Express
+10. Edit =/etc/pve/qemu-server/$VMID.conf= again
+    To allow the VM to use the GFX card built-in audio card,
+    edit the ~hostpci0:~ line to include the whole PCIe group
+    instead of just the one device in the group.
+    Go from ~XX:XX.X~ to ~XX:XX~.
+11. Start the VM and install GFX drivers
+12. Install parsec for faster remote desktop
+
