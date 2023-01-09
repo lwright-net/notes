@@ -111,3 +111,69 @@ with a graphics card passed through.
 11. Start the VM and install GFX drivers
 12. Install parsec for faster remote desktop
 
+
+** Drive sanitization and imaging over the network
+In this section of my notes, I walk through the process of performing a drive
+sanitizaion and installation of new OS over the network. The goal of this process
+is that scripts should do most of the work, and there should be minimal human interaction.
+Ideally the only interaction I would like from a human is to plug in a network cable,
+reboot the device, then interrupt the boot process to select the network boot option
+instead of booting from local storage, and finally initiate the sanitization process.
+*** DHCP server
+When a device is trying to perform a network boot, it is reliant on the DHCP
+server to provide a instructions on where to find a bootable image on the network.
+In my lab environment, I've configured my DHCP server to provide the =NextServer=.
+This by it self is not enough to retreive a bootable image. You must also configure
+the DHCP server to provide a file name to request from the =NextServer=.
+In my lab environment I've set =FileName= to be ~ipxe.efi~.
+With these values set, any machine that is trying to perform a network boot will request
+an IP address from the DHCP server, and receive and IP along with a location on the network
+to download and run a bootable image. The bootable image could be some Windows or Linux OS,
+but this is not very flexible because every machine that tries to perform a network boot
+will use the same image. This is where iPXE comes in.
+*** iPXE
+iPXE is an open-source boot firmware. From my understanding, in the past, if you wanted to use
+iPXE it needed to be burned into the NIC on the device you wanted to network boot. This is no
+longer required, and it can now be chain loaded by the devices existing PXE environment.
+This is great because now you can leverage all the features of iPXE on pretty much any network
+bootable device. The two most useful for my intended use-case are scripting, and the ability to
+load images over HTTP.
+
+Normally bootable images loaded over the network are downloaded using the TFTP protocol, but
+this is very slow because TFTP is limited to 512 byte packet size. Which is really slow when
+you're trying to transfer a whole OS installation image. I do not currently know of a way to
+completely avoid TFTP, but we can minimize the use of it by using iPXE. To get iPXE running on
+a device, there must be a copy of it available on the network via TFTP. The device's built-in PXE
+loader will then download and run the iPXE firmware. Once iPXE is loaded we now have the ability
+to run scripts and download other images over HTTP.
+
+One really nice feature of iPXE is that it can dynamically make HTTP requests. Here's an example
+from ipxe.org:
+#+begin_src shell
+http://192.168.0.1/boot.php?mac=${net0/mac}&asset=${asset:uristring}
+#+end_src
+Which would then be evaluated to something like:
+#+begin_src shell
+http://192.168.0.1/boot.php?mac=52:54:00:12:34:56&asset=BKQ42M1
+#+end_src
+This is great because the HTTP server that is serving up the bootable images can supply a different
+image based of the values it receives in the URL requested.
+
+iPXE scripts can also be used to give menus. This could be useful if you wanted to select a specifc
+image to boot. For example: maybe you'd like to boot a rescue image instead of sanitizing your drive
+and reinstalling the OS. With menus you could interupt the script and do just that, assuming you've
+got a rescue image availe on your HTTP server.
+
+In my intended use-case I would script iPXE to boot a Windows installation image after so many seconds
+by default. This is because after the drive sanitization is completed, there will be no OS installed on
+the local storage and the device will be forced to use network booting. And since this process should be
+automated as much as possible, it will need to boot into the Windows installation image automattically.
+To initiate a sanitization of the drive the operator would need to select ShredOS from the menu shown.
+*** ShredOS
+ShredOS is a small (60 MB) Linux based OS with it's main purpose being to sanitize (shred) drives.
+It can be preconfigured to perform a 'boot and nuke'. This will cause all storage devices attached
+to be sanitized. ShredOS has options for a few different sanitization methods but the one I usually
+stick with is the DoD 5220.22-M method, mostly because if it's good enough for the DoD surely it's
+good enough for me. In addition to multiple sanitization methods, it can also write and upload log
+files via FTP. Which is an essential feature for record-keeping.
+
