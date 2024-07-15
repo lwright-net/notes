@@ -1,4 +1,5 @@
 * Ideas
+** Kasm workspace gaming rig?
 * Notes
 ** nmap 
 *** types of scans
